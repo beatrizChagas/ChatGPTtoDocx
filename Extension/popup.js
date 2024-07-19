@@ -1,3 +1,4 @@
+let saveAsDocButton = document.getElementById('saveAsDocButton');
 let saveAsTxtButton = document.getElementById('saveAsTxtButton');
 let saveAsMarkdownButton = document.getElementById('saveAsMarkdownButton');
 let saveAsPDFButton = document.getElementById('saveAsPDFButton');
@@ -5,6 +6,17 @@ let copyButton = document.getElementById('copyButton');
 const button = document.querySelector('#copyButton');
 const icon = button.querySelector('span');
 
+import {saveAs} from 'file-saver';
+
+saveAsDocButton.addEventListener("click", async () => {
+    // Get current active tab
+    let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    // Execute script to parse chat on page and save as DOC
+    chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: saveAsDoc,
+    });
+});
 
 saveAsTxtButton.addEventListener("click", async () => {
     // Get current active tab
@@ -75,6 +87,52 @@ copyButton.addEventListener("click", async () => {
 });
 
 
+// Function to save text to chatData as Doc
+async function saveAsDoc() {
+    let element = document.querySelector(".text-base");
+        if (!element || element.innerText === undefined) {
+            alert("Nothing found");
+            return;
+        }
+        const elements = document.querySelectorAll(".text-base");
+        let chatData = "";
+        for (const element of elements) {
+            if (element.querySelector('.whitespace-pre-wrap')) {
+                let innerText = element.querySelector(".whitespace-pre-wrap").innerText;
+                chatData += `<w:p><w:r><w:t>${element.querySelectorAll('img').length > 1 ? 'You:' : 'ChatGPT:'}</w:t></w:r></w:p>`;
+                chatData += `<w:p><w:r><w:t>${innerText}</w:t></w:r></w:p>`;
+                chatData += `<w:p><w:r><w:t>------------------</w:t></w:r></w:p>`;
+            }
+        }
+
+        let docxContent = `
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                <w:body>${chatData}</w:body>
+            </w:document>`;
+
+        const zip = new JSZip();
+        zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+                <Default Extension="xml" ContentType="application/xml"/>
+                <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+            </Types>`);
+
+        zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+            </Relationships>`);
+
+        zip.file('word/_rels/document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+            </Relationships>`);
+
+        zip.file('word/document.xml', docxContent);
+
+        const blob = await zip.generateAsync({ type: 'blob' });
+        saveAs(blob, 'Saved_ChatGPT_.docx');
+}
 
 // Function to save text to chatData as TXT
 async function saveAsTxt() {
